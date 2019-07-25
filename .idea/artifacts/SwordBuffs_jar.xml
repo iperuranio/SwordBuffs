@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="SwordBuffs:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/SwordBuffs_jar</output-path>
+    <root id="archive" name="SwordBuffs.jar">
+      <element id="module-output" name="SwordBuffs" />
+    </root>
+  </artifact>
+</component>
