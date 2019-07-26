@@ -5,38 +5,41 @@ import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Sign;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryMoveItemEvent;
-import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
-import org.bukkit.event.player.PlayerPickupItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.jetbrains.annotations.NotNull;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
 
 public class SwordBuffs extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        getCommand("addbuff").setExecutor(new AddBuff());
         getServer().getPluginManager().registerEvents(this, this);
 
+        getServer().getLogger().log(Level.INFO, "Searching for Vault...");
         Vault.setupChat();
         if (!Vault.setupEconomy())
         {
+            getServer().getLogger().log(Level.SEVERE, "Vault not found, disabling...");
             getServer().getPluginManager().disablePlugin(this);
         }
     }
@@ -126,6 +129,89 @@ public class SwordBuffs extends JavaPlugin implements Listener {
         for(PotionEffect po : types) {
             p.addPotionEffect(po, true);
         }
+    }
+
+    private void addBuff(@NotNull String[] args) {
+        Player toAdd = Bukkit.getPlayer(args[0]);
+        ItemStack item = toAdd.getItemInHand();
+        final double balance = Vault.getBalance(toAdd);
+
+        if(item == null || item.getType() != Material.DIAMOND_SWORD) {
+            toAdd.sendMessage("§2§lFazioni §8§l» §cItem non valido.");
+            return;
+        }
+
+        if(args[1].equals("reset")) {
+            if(!SwordBuffs.isSword(item)) {
+                toAdd.sendMessage("§2§lFazioni §8§l» §cQuesta spada non possiede effetti.");
+                return;
+            }
+            final long price = Long.parseLong(args[2]);
+            if(balance >= price) {
+                SwordBuffs.removeEffectsToPlayer(toAdd, SwordBuffs.getFastTypes(item.getItemMeta().getLore()));
+                Vault.pay(toAdd, price);
+                toAdd.sendMessage("§c$"+price+" prelevati dal tuo conto.");
+                toAdd.sendMessage("§2§lFazioni §8§l» §7Spada resettata con successo!");
+
+                ItemStack newItem = new ItemStack(Material.DIAMOND_SWORD);
+                ItemMeta im = newItem.getItemMeta();
+
+                for(Map.Entry<Enchantment, Integer> entry : item.getItemMeta ().getEnchants().entrySet()) {
+                    im.addEnchant(entry.getKey(), entry.getValue(), true);
+                }
+
+                item.setItemMeta(im);
+                toAdd.updateInventory();
+            } else {
+                toAdd.sendMessage("§2§lFazioni §8§l» §cNon hai abbastanza soldi!");
+            }
+            return;
+        }
+
+        PotionEffectType potionType = PotionEffectType.getByName(args[1]);
+        int level = Integer.parseInt(args[2])+1;
+        PotionEffect po = new PotionEffect(potionType, 1, level);
+        final long price = Long.parseLong(args[3]);
+        boolean replacingEffects = false;
+
+        if(isSword(item)) {
+            HashMap<PotionEffectType, Integer> potions = SwordBuffs.getEffects(item);
+
+            if(potions.containsKey(potionType)) {
+                if(potions.get(potionType) >= level-1) {
+                    toAdd.sendMessage("§2§lFazioni §8§l» §cPuoi solo aggiungere effetti più potenti di quelli posseduti!");
+                    return;
+                }
+
+                replacingEffects = true;
+            }
+        }
+
+        if(balance <= price) {
+            toAdd.sendMessage("§2§lFazioni §8§l» §cNon hai abbastanza soldi!");
+            return;
+        }
+
+        if(replacingEffects) {
+            SwordBuffs.removeEffect(item, potionType);
+        }
+
+        if(!SwordBuffs.isSword(item)) {
+            createSword(toAdd.getName(), item, po);
+        } else {
+            addEffect(item, po);
+        }
+
+        toAdd.updateInventory();
+
+        SwordBuffs.removeEffectsToPlayer(toAdd, SwordBuffs.getFastTypes(item.getItemMeta().getLore()));
+        SwordBuffs.sendEffectsToPlayer(toAdd, SwordBuffs.getFastEffects(item.getItemMeta().getLore()));
+
+        Vault.pay(toAdd, price);
+        toAdd.sendMessage("§c$"+price+" prelevati dal tuo conto.");
+        toAdd.sendMessage("§2§lFazioni §8§l» §aBuff aggiunto con successo!");
+        toAdd.playSound(toAdd.getLocation(), Sound.NOTE_PLING, 5, 0);
+        return;
     }
 
     public static ArrayList<PotionEffectType> getFastTypes(List<String> lore) {
@@ -246,11 +332,12 @@ public class SwordBuffs extends JavaPlugin implements Listener {
             if(sign.getLine(3).contains("§8(§f")) {
                 final PotionEffect pe = new PotionEffect(PotionEffectType.getById(Integer.parseInt(sign.getLine(3).split(":")[0].replace("§8(§f", ""))), 1, Integer.parseInt(sign.getLine(3).split(":")[1].replace("§8)", "")));
 
+                addBuff(new String[] {e.getPlayer().getName(), pe.getType().getName(), ""+pe.getAmplifier(), ""+Long.parseLong(sign.getLine(2).replace("§c$", ""))});
                 Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "addbuff "+e.getPlayer().getName()+" "+pe.getType().getName()+" "+pe.getAmplifier()+" "+Long.parseLong(sign.getLine(2).replace("§c$", "")));
             } else if(sign.getLine(3).contains("§8[§c")) {
                 final long price = Long.parseLong(sign.getLine(3).split("c")[1].replace("$", "").replace("§8]", ""));
 
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "addbuff "+e.getPlayer().getName()+" reset "+price);
+                addBuff(new String[] {e.getPlayer().getName(), "reset", ""+price});
             }
         }
     }

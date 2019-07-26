@@ -1,10 +1,8 @@
 name: SwordBuffs
 version: ${project.version}
-description: Buffs sulle spade
+description: A plugin that gives you buffs from swords!
 author: claxon007
 website: https://www.evermine.it
 main: it.evermine.swordbuffs.SwordBuffs
 
-commands:
-  addbuff:
-    usage: /<command>
+depends: [Vault]
